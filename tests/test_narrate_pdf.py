@@ -17,6 +17,7 @@ from worker.workflows.narrate_pdf import (
     Selection,
     _drive_query,
     _is_pdf_attachment,
+    _tool_json,
 )
 
 TASK_QUEUE = "test-task-queue"
@@ -125,6 +126,14 @@ def test_drive_query_escapes_and_filters():
     query = _drive_query("alice's invoice")
     assert "mimeType = 'application/pdf'" in query
     assert "title contains 'alice\\'s invoice'" in query
+
+
+def test_tool_json_extracts_mcp_text_content():
+    envelope = {"content": [{"type": "text", "text": '{\"files\": [{\"id\": \"f1\"}]}'}], "metadata": {}}
+    assert _tool_json(envelope) == {"files": [{"id": "f1"}]}
+    assert _tool_json({"files": []}) == {"files": []}
+    assert _tool_json({"content": []}) is None
+    assert _tool_json({"content": [{"type": "text", "text": "not json"}]}) is None
 
 
 def test_is_pdf_attachment():

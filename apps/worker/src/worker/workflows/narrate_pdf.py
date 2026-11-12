@@ -7,6 +7,7 @@ Mistral OCR, narrates it with Voxtral text-to-speech, and saves the audio to Dri
 from __future__ import annotations
 
 import base64
+import json
 import re
 from typing import Any, List, Optional
 
@@ -29,6 +30,19 @@ MAX_GMAIL_THREADS = 10
 
 drive_connector = connector("google_drive_mcp")
 gmail_connector = connector("gmail")
+
+
+def _tool_json(result: Any) -> Any:
+    """Extract the JSON payload from a connector tool call response."""
+    if not isinstance(result, dict) or "content" not in result:
+        return result
+    for item in result.get("content") or []:
+        if isinstance(item, dict) and item.get("type") == "text" and item.get("text"):
+            try:
+                return json.loads(item["text"])
+            except (json.JSONDecodeError, TypeError):
+                return None
+    return None
 
 
 def _mistral_client():
@@ -137,7 +151,7 @@ async def search_drive(
             tool_name="search_files",
             arguments={"query": _drive_query(term), "page_size": MAX_DRIVE_CANDIDATES},
         )
-        for file in (result or {}).get("files") or []:
+        for file in (_tool_json(result) or {}).get("files") or []:
             file_id = file.get("id")
             if not file_id or file_id in seen:
                 continue
@@ -167,7 +181,7 @@ async def search_gmail(
         arguments={"query": f"has:attachment filename:pdf {gmail_query}", "pageSize": MAX_GMAIL_THREADS},
     )
     candidates: List[GmailCandidate] = []
-    for thread in (result or {}).get("threads") or []:
+    for thread in (_tool_json(result) or {}).get("threads") or []:
         thread_id = thread.get("id") or ""
         for message in thread.get("messages") or []:
             for attachment in message.get("attachments") or []:
@@ -235,7 +249,7 @@ async def download_pdf(
         tool_name="download_file_content",
         arguments={"file_id": file_id},
     )
-    content = (result or {}).get("content")
+    content = (_tool_json(result) or {}).get("content")
     if not content:
         raise workflows.ActivityError(f"Drive file {file_id} has no downloadable content.")
     return content
@@ -290,7 +304,7 @@ async def save_to_drive(
             "content_mime_type": "audio/mpeg",
         },
     )
-    return result or {}
+    return _tool_json(result) or {}
 
 
 @workflows.workflow.define(
