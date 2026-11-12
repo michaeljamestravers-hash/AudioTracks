@@ -6,7 +6,6 @@ Mistral OCR, narrates it with Voxtral text-to-speech, and saves the audio to Dri
 
 from __future__ import annotations
 
-import base64
 import json
 import re
 from typing import Any, List, Optional
@@ -257,19 +256,15 @@ async def download_pdf(
 
 @workflows.activity(name="narrate-pdf-ocr")
 async def ocr_pdf(pdf_b64: str, filename: str) -> str:
-    from mistralai.client.models import DocumentURLChunk, File
+    from mistralai.client.models import DocumentURLChunk
 
-    pdf_bytes = base64.b64decode(pdf_b64)
     client = _mistral_client()
-
-    uploaded = client.files.upload(
-        file=File(file_name=filename, content=pdf_bytes),
-        purpose="ocr",
-    )
-    signed = client.files.get_signed_url(file_id=uploaded.id)
     ocr_response = client.ocr.process(
         model=OCR_MODEL,
-        document=DocumentURLChunk(document_url=signed.url),
+        document=DocumentURLChunk(
+            document_url=f"data:application/pdf;base64,{pdf_b64}",
+            document_name=filename,
+        ),
     )
     pages = sorted(ocr_response.pages, key=lambda page: page.index)
     return "\n\n".join((page.markdown or "").strip() for page in pages).strip()
